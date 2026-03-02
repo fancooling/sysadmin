@@ -1,0 +1,80 @@
+# an alternative hardstatus to display a bar at the bottom listing the
+# windownames and highlighting the current windowname in blue. (This is only
+# enabled if there is no hardstatus setting for your terminal)
+hardstatus on
+
+
+# escape key changed to ctrl-t intead of ctrl-a
+# escape ^tt
+
+# show window status
+caption always "%{= wk} %{= KY} [%n]%t @ %H %{-} %= %{= KR} %l %{-} | %{= KG} %Y-%m-%d %{-} "
+hardstatus alwayslastline " %-Lw%{= Bw}%n%f %t%{-}%+Lw %=| %0c:%s "
+
+#2. #caption always "%?%F%{-b bc}%:%{-b bb}%?%C|%D|%M %d|%H%?%F%{+u wb}%? %L=%-Lw%45>%{+b by}%n%f* %t%{-}%+Lw%-0<"
+# caption description:
+# 
+# Anything I don't describe is treated literally.
+# 
+# %?          - Start of a conditional statement.
+#  %F         - Use this part of the statement if the window has focus (i.e. it
+#               is the only window or the currently active one).
+#  %{-b bc}   - Turn off bold, blue foreground, cyan background.
+# %:          - else
+#  %{-b bb}   - Turn off bold, blue foreground, blue background (this obscures
+#               the text on non-focused windows and just gives a blue line).
+# %?          - End conditional statement.
+#  %C         - time (hh:mm, leading space) in 12 hour format
+#  %D         - Three-letter day-of-week appreviation
+#  %M         - Three-letter month appreviation
+#  %d         - Day of the month
+#  %H         - hostname
+#  %?         - Start of conditional statement.
+#   %F        - Use this part of the statement if the window has focus.
+#   %{+u wb}  - underlined, white foreground, blue background
+#  %?         - End conditional (if not focused, text remaind blue on blue).
+#    %L=      - truncation/padding point.  With the 'L' qualifier, basically
+#               just acts as a reference point.  Further truncation/padding is
+#               done relative to here, not the beginning of the string
+#    %-Lw     - window list up to but not including the current window (-),
+#               show window flags (L)
+#    %45>     - truncation/padding marker; place this point about 45% of the
+#               way into the display area (45)
+#    %{+b by} - add bold (still underlined from before), blue foreground,
+#               yellow background
+#      %n     - number of the current window
+#      %f     - flags for current window
+#      %t     - title of current window
+#    %{-}     - undo last color change (so now we're back to underlined white
+#               on blue)  (technically, this is a pop; a second invocation
+#               would drop things back to unadorned blue on cyan)
+#    %+Lw     - window list from the next window on (-), show window flags (L)
+#    %-0<     - truncation/padding point.  Place this point zero spaces (0)
+#   
+#3.1#hardstatus alwayslastline
+#3.2#hardstatus string "%{.bW}%-w%{.rW}%n %t%{-}%+w %=%{..G} %H %{..Y} %m/%d %C%a "
+
+
+#OTHERS:
+# I know about screen.  I don't need to see it every time I start the program.
+# (Which is, admittedly, rarely.)
+startup_message off
+# Log new screen windows in utmp.
+deflogin on
+# Never, ever turn this off.
+autodetach on
+# I like to hear the beep.
+vbell off
+# I like a large scrollback
+defscrollback 10000
+# fix scrollback in putty
+#termcapinfo xterm* ti@:te@
+# Make screen messages stand out a little more - black on bright green.
+sorendition "+b kG"
+
+#split
+
+# From Stephen Shirley
+# Don't block command output if the terminal stops responding
+# (like if the ssh connection times out for example).
+nonblock on
