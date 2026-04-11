@@ -120,10 +120,6 @@ export PATH=~/.npm-global/bin:$PATH
 export HF_HOME="~/.cache/huggingface"
 
 
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
-[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
-
 # >>> conda initialize >>>
 # !! Contents within this block are managed by 'conda init' !!
 __conda_setup="$('/home/jieyan/miniforge3/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
