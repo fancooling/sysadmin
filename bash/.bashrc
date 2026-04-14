@@ -150,9 +150,6 @@ unset __mamba_setup
 # <<< mamba initialize <<<
 
 
-# Load Angular CLI autocompletion.
-source <(ng completion script)
-
 # Source secrets (API keys, passwords, tokens) from ~/.bash_keys
 # This file is NOT checked into version control.
 if [ -f ~/.bash_keys ]; then
