@@ -19,7 +19,9 @@ Options:
     --folder        Folder in which the entry is created (created if missing).
     --private_key   Path to the private key file.
     --public_key    Path to the public key file.
-                    Defaults to <private_key>.pub if not specified.
+                    If not specified, uses <private_key>.pub when it exists,
+                    otherwise derives the public key from the private key
+                    via ssh-keygen -y.
     -h, --help      Show this help and exit.
 EOF
 }
@@ -48,17 +50,27 @@ for arg in name folder private_key; do
     fi
 done
 
+derive_public_key=""
 if [[ -z "$public_key" ]]; then
-    public_key="${private_key}.pub"
+    if [[ -r "${private_key}.pub" ]]; then
+        public_key="${private_key}.pub"
+    else
+        derive_public_key=1
+    fi
 fi
 
 bw_require_tools
+
+if [[ -n "$derive_public_key" ]] && ! command -v ssh-keygen >/dev/null 2>&1; then
+    echo "ssh-keygen is required to derive the public key from $private_key" >&2
+    exit 1
+fi
 
 if [[ ! -r "$private_key" ]]; then
     echo "Cannot read private key file: $private_key" >&2
     exit 1
 fi
-if [[ ! -r "$public_key" ]]; then
+if [[ -z "$derive_public_key" && ! -r "$public_key" ]]; then
     echo "Cannot read public key file: $public_key" >&2
     exit 1
 fi
@@ -69,11 +81,15 @@ bw sync >/dev/null
 folder_id="$(bw_get_or_create_folder_id "$folder")"
 
 private_key_content="$(cat "$private_key")"
-public_key_content="$(cat "$public_key")"
+if [[ -n "$derive_public_key" ]]; then
+    public_key_content="$(ssh-keygen -y -f "$private_key")"
+else
+    public_key_content="$(cat "$public_key")"
+fi
 
 fingerprint=""
 if command -v ssh-keygen >/dev/null 2>&1; then
-    fingerprint="$(ssh-keygen -l -f "$public_key" 2>/dev/null | awk '{print $2}' || true)"
+    fingerprint="$(printf '%s\n' "$public_key_content" | ssh-keygen -l -f - 2>/dev/null | awk '{print $2}' || true)"
 fi
 
 item_json="$(jq -n \
