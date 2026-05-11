@@ -66,6 +66,7 @@ the LATEST Incremental backup to fully restore.
 """
 
 import argparse
+import concurrent.futures
 import datetime
 import json
 import logging
@@ -113,19 +114,29 @@ def print_config(config):
     logging.info("----------------------------\n")
 
 
-def run_cmd(cmd, shell=False, fatal=True):
-    """Helper to run a subprocess command."""
-    logging.info(f"Running command: {cmd if shell else shlex.join(cmd)}")
+def run_cmd(cmd, shell=False, fatal=True, timeout=None):
+    """Helper to run a subprocess command. Returns True on success, False on
+    non-fatal failure/timeout."""
+    pretty = cmd if shell else shlex.join(cmd)
+    logging.info(f"Running command: {pretty}")
     try:
-        subprocess.run(cmd, shell=shell, check=True)
+        subprocess.run(cmd, shell=shell, check=True, timeout=timeout)
+        return True
+    except subprocess.TimeoutExpired:
+        msg = f"Command timed out after {timeout}s: {pretty}"
+        if fatal:
+            logging.error(msg)
+            sys.exit(1)
+        logging.error(msg + ", continuing anyway...")
+        return False
     except subprocess.CalledProcessError as e:
         if fatal:
             logging.error(f"Command failed with exit code {e.returncode}: {e.cmd}")
             sys.exit(e.returncode)
-        else:
-            logging.warning(
-                f"Command failed with exit code {e.returncode}: {e.cmd}, continuing anyway..."
-            )
+        logging.warning(
+            f"Command failed with exit code {e.returncode}: {e.cmd}, continuing anyway..."
+        )
+        return False
 
 
 def load_configuration(config_path):
@@ -226,15 +237,17 @@ def main():
     logging.info("Shutting down Immich server...")
     run_cmd(["docker", "compose", "-f", compose_file, "down"])
 
-    try:
-        # 4. Remote Sync (Rsync)
+    # Steps 4 and 5 run in parallel; each is independently capped at 1 hour.
+    STEP_TIMEOUT_SECONDS = 7200
+
+    def step_4_rsync():
         # Trailing slash is important for local rsync src!
         rsync_src = (
             immich_upload if immich_upload.endswith("/") else immich_upload + "/"
         )
-        logging.info(f"Syncing files to remote rsync module: {rsync_module}")
+        logging.info(f"[rsync] Syncing files to remote rsync module: {rsync_module}")
         # -a: archive mode, -v: verbose, --delete: delete extraneous files from dest dirs
-        run_cmd(
+        return run_cmd(
             [
                 "rsync",
                 "-avz",
@@ -245,9 +258,10 @@ def main():
                 rsync_module,
             ],
             fatal=False,
+            timeout=STEP_TIMEOUT_SECONDS,
         )
 
-        # 5. Local Encrypted Backup (7z)
+    def step_5_local_backup():
         folders_to_compress = [
             os.path.join(immich_upload, f)
             for f in TARGET_FOLDERS
@@ -256,47 +270,61 @@ def main():
 
         if not folders_to_compress:
             logging.warning(
-                "None of the specified target folders were found in the upload path!"
+                "[7z] None of the specified target folders were found in the upload path!"
             )
-        else:
-            if is_full_backup:
-                backup_filename = f"immich_full_{current_date_str}.7z"
-                backup_filepath = os.path.join(local_backup_path, backup_filename)
-                logging.info(f"Creating Full 7z Backup: {backup_filepath}")
+            return False
 
-                cmd = [
-                    "7z",
-                    "a",
-                    "-t7z",
-                    f"-p{compression_password}",
-                    "-mhe=on",
-                    backup_filepath,
-                ] + folders_to_compress
-                run_cmd(cmd)
+        if is_full_backup:
+            backup_filename = f"immich_full_{current_date_str}.7z"
+            backup_filepath = os.path.join(local_backup_path, backup_filename)
+            logging.info(f"[7z] Creating Full 7z Backup: {backup_filepath}")
 
-                # Update state
+            cmd = [
+                "7z",
+                "a",
+                "-t7z",
+                f"-p{compression_password}",
+                "-mhe=on",
+                backup_filepath,
+            ] + folders_to_compress
+            ok = run_cmd(cmd, fatal=False, timeout=STEP_TIMEOUT_SECONDS)
+            if ok:
                 state["last_full_timestamp"] = now.timestamp()
                 state["last_full_filename"] = backup_filename
                 with open(state_file, "w") as f:
                     json.dump(state, f)
-            else:
-                backup_filename = f"immich_inc_{current_date_str}.7z"
-                backup_filepath = os.path.join(local_backup_path, backup_filename)
-                base_filepath = os.path.join(local_backup_path, last_full_filename)
-                logging.info(
-                    f"Creating Incremental 7z Backup: {backup_filepath} based on {base_filepath}"
-                )
+            return ok
 
-                cmd = [
-                    "7z",
-                    "u",
-                    base_filepath,
-                    "-u-",
-                    f"-up0q3r2x2y2z0w2!{backup_filepath}",
-                    f"-p{compression_password}",
-                    "-mhe=on",
-                ] + folders_to_compress
-                run_cmd(cmd)
+        backup_filename = f"immich_inc_{current_date_str}.7z"
+        backup_filepath = os.path.join(local_backup_path, backup_filename)
+        base_filepath = os.path.join(local_backup_path, last_full_filename)
+        logging.info(
+            f"[7z] Creating Incremental 7z Backup: {backup_filepath} based on {base_filepath}"
+        )
+
+        cmd = [
+            "7z",
+            "u",
+            base_filepath,
+            "-u-",
+            f"-up0q3r2x2y2z0w2!{backup_filepath}",
+            f"-p{compression_password}",
+            "-mhe=on",
+        ] + folders_to_compress
+        return run_cmd(cmd, fatal=False, timeout=STEP_TIMEOUT_SECONDS)
+
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            futures = {
+                "rsync": executor.submit(step_4_rsync),
+                "7z backup": executor.submit(step_5_local_backup),
+            }
+            for name, fut in futures.items():
+                try:
+                    if not fut.result():
+                        logging.error(f"Step ({name}) failed or timed out.")
+                except Exception:
+                    logging.exception(f"Step ({name}) raised unexpected exception.")
 
     finally:
         # 6. Start Immich Server

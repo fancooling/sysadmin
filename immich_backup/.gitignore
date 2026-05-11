@@ -1,3 +1,4 @@
 mock_local_backup/
 mock_remote_backup/
 mock_immich/
+__pycache__/
