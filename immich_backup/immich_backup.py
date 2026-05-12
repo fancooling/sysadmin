@@ -238,7 +238,7 @@ def main():
     run_cmd(["docker", "compose", "-f", compose_file, "down"])
 
     # Steps 4 and 5 run in parallel; each is independently capped at 1 hour.
-    STEP_TIMEOUT_SECONDS = 7200
+    STEP_TIMEOUT_SECONDS = 14400
 
     def step_4_rsync():
         # Trailing slash is important for local rsync src!
